@@ -1,0 +1,241 @@
+AUTHOR		: HO KA WAI(ASIAA)
+VERSION		: V1.0
+DATE RELEASE: 30/8/2017
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////
+This is a mutidimenional regression neural network and data analysis script in order to extand the GRAMS model (Riebel+ 2012, Srinivasan+ 2016)
+It is called Icy.
+The script is divided into three part: training, extanding and data analysis, the following showed the structure of this script.
+
+New_GRAMS:
+	->grams_c.fits
+	->Icy_Tin.py
+	->Icy_Flux.py
+	->GRAMS_generator.py
+	->data_analysis.py
+	visual:
+		->visual_plot.py
+
+grams_c.fits	 : It is the old GRAMS file
+Icy_Tin.py  	 : It is for training network to predict the Inner temperature for the dust shell
+Icy_Flux.py      : It is for training network to predict the spectra
+GRAMS_generator  : It is for extanding the GRAMS model aftering training 
+
+Inside the data_analysis file
+visual_plot.py   : It will give out the png file of the training proccess of the spectra netwrok
+data_analysis.py : It is a small library with many small function to testing the training result
+
+
+
++=========================================================================================================+
+
+
+CONTENT:
+I  :TOLD YOU HOW TO USE IT IN SIMPLE
+II :THE DATA ANAYLSIS PART
+III:MORE SETTING IN THE TRAINING
+IV : visual part
+V : Caveats
+
+
+================================================== I =====================================================
+
+THERE ARE FOUR .PY FILES REQUIRED FOR THE ICY RUN. ONLY THESE ARE REQUIRED TO GENERATE EVERYTHING ELSE. THE ONLY INFORMATION REQUIRED IS THE PATH TO THE grams_c.fits FILES.
+
+TO USE THIS SCRIPTS，PLS FOLLOWING THE STEP SHOWED HERE:
+1. run the Icy_Tin.py
+''
+$: nohup ipython v2.py > /dev/null 2>&1 &
+''
+2. run the Icy_Flux.py
+''
+$: nohup ipython v2.py > /dev/null 2>&1 &
+''
+	It will give out six files aftering training:
+	1.1. Icy_FLux.txt : Show the training process for the user, the error show ~ disagreement 
+	1.2. Icy_FLux.pkl : Save the w and b parameter of the network
+	1.3. Icy_FLux.h5  : Save the training and testing data of the network
+	2.1. Icy_Tin.txt  : ''
+	2.2. Icy_Tin.pkl  : ''
+	2.3. Icy_Tin.h5   : ''
+
+	The *.h5 and *.pkl will be saved after the training is finish
+
+3. run the GRAMS_generator.py
+''
+$: nohup ipython GRAMS_generator.py > /dev/null 2>&1 &
+''
+	It will give out the New GRAMS files with extanded optical depth
+
+finally, it should be look like:
+
+New_GRAMS:
+	->grams_c.fits
+	->Icy_Tin.py
+	->Icy_Flux.py
+	->GRAMS_generator.py
+	->New_GRAMS.fits
+	->Icy_FLux.txt
+	->Icy_FLux.pkl
+	->Icy_FLux.h5 
+	->Icy_Tin.txt  
+	->Icy_Tin.pkl  
+	->Icy_Tin.h5   
+	->data_analysis.py
+	visual:
+		->visual_plot.py
+
+
+================================================== II =====================================================
+Before doing any analysis, please do this first :
+
+1. loading the library: make sure what is the path of your h5 and pkl file like example:'/home/asiaa/New_GRAMS/Icy_Flux.h5'
+
+2. copy the network of predict the flux from Icy_Flux.py to data_analysis.py, if you dont change any setup of network, It already have one insdie,like the following.
+
+>>  class Icy_Flux(torch.nn.Module):
+	    def __init__(self,input_size,output_size,ner_size):
+	        super(Icy_Flux, self).__init__()
+	        self.input_layer         =torch.nn.Linear(input_size,4*input_size, bias=True)
+	        self.hidden_feature_1    =torch.nn.Linear(4*input_size,output_size, bias=True)
+	        self.hidden_feature_2    =torch.nn.Linear(output_size,output_size, bias=True)
+	        self.predict_layer       =torch.nn.Linear(output_size,output_size, bias=True)
+
+	    def forward(self,x):
+	        x=F.sigmoid(self.input_layer(x))
+	        x=F.sigmoid(self.hidden_feature_1(x))
+	        x=F.sigmoid(self.hidden_feature_2(x))
+	        x=self.predict_layer(x)
+	        return x
+3. copy the path of the pkl file and h5 file to the data_analysis.py, the following example:
+
+>> 	path_of_h5='/home/asiaa/New_GRAMS/Icy_Flux.h5'
+	fr = h5.File(path_of_h5, "r")
+	training_x=fr['training_x'].value
+	training_y=fr['training_y'].value
+	testing_x =fr['testing_x'].value
+	testing_y =fr['testing_y'].value
+	xmax      =fr['x_max'].value
+	xmin      =fr['x_min'].value
+	wlen      =fr['wlen'].value
+	fr.close()
+
+>>  PATH_of_pkl='/home/asiaa/New_GRAMS/Icy_Flux.pkl'
+	net=Icy_Flux(training_x.shape[1],training_y.shape[1],None)
+	net.load_state_dict(torch.load(PATH_of_pkl));
+
+The training/testing _x,y is the parameter(tau,Teff,logg,C2O,Rin) and spectrum of training and testing data 
+The xmin and xmin is using to proccess the data(all the data will transalte between 0.1 and 0.9)
+wlen is the wlenlength from the GRAMS file.
+
+
+4. import and use the function
+
+example:
+
+>> import data_analysis
+
+I will list out the most useful function here and example to use:
+4.1 error_checking_function
+for checking the maximum error / mean error of the testing/training data (in unit of spectrum)
+option: None  ->maximum error of each testing spectrum
+		"99%" ->doing the sorting ,choose the last 1% error 
+		"mean"->the mean error
+examples to use:
+>> training_error,testing_error=data_analysis.error_checking_function(err_term=None)
+>> training_error,testing_error=data_analysis.error_checking_function(err_term="99%")
+>> training_error,testing_error=data_analysis.error_checking_function(err_term="mean")
+
+4.2 prediction
+To do the predicition use. just like you have tau11_3=1 and tau11_3=1.5 ,you want to know tau11_3=1.25.
+please input the data as the following format: tau11_3,Teff,logg,CO2,Rin
+It will give the predicted flux
+example to use:
+>> predicted_flux=data_analysis.prediction(np.array([tau11_3,Teff,logg,C2O,Rin]),xmax,xmin,net)
+
+
+4.3 error_wlen_function
+To give user the relation between the wa velength point and error %
+It will give out a plot with the maximum error ,mean error and median error
+
+example to use:
+>> data_analysis.error_wlen_function()
+
+4.4 plot_check
+give out a detail error plot to use with the log and real space spectrum plot , dF/F (error percentage)
+exmaple to use:
+data_analysis.plot_check(mode,index)
+mode :have the option of 'training' and 'testing' which is training and testing data
+i    : index number, you can use error_checking_function to help you find that
+
+>>plot_check(testing_x,testing_y,55,xmin,xmax)
+
+
+
+IF SOME FUNCTION CANT RUN，JUST COPY THE WHOLE dat_anaylsis,py INTO YOUR PYTHON AND RUN IT WITH data_analyis.xxxx
+
+
+================================================== III =====================================================
+
+For the 1., This part 
+1.1.selected the training and testing percentage ratio (function parameter ratio)
+1.2.selected the grams Mass=2Ms to train and testing (inside the function)
+
+For the 2., This part
+It will talk deeper about the training script: Icy_Tin.py and Icy_FLux.py
+
+They have four main parts:
+-> 1.data convert to pytorch tensor function
+-> 2.network setup
+-> 3.training function
+-> 4.data saving function
+2.1 You neural network structure setup,something you can try yourself
+	->dropout
+	example. add dropout like this
+
+>>  class Icy_Flux(torch.nn.Module):
+	    def __init__(self,input_size,output_size,ner_size):
+	        super(Icy_Flux, self).__init__()
+	        self.input_layer         =torch.nn.Linear(input_size,4*input_size, bias=True)
+	        self.hidden_feature_1    =torch.nn.Linear(4*input_size,output_size, bias=True)
+	        self.hidden_feature_2    =torch.nn.Linear(output_size,output_size, bias=True)
+	        self.predict_layer       =torch.nn.Linear(output_size,output_size, bias=True)
+
+	    def forward(self,x):
+	        x=F.sigmoid(self.input_layer(x))
+	        nn.dropout(0.5) 
+	        x=F.sigmoid(self.hidden_feature_1(x))
+	       	nn.dropout(0.5)
+	        x=F.sigmoid(self.hidden_feature_2(x))
+	      	nn.dropout(0.5)
+	        x=self.predict_layer(x)
+	        return x
+(0.5 is turn off half the network of that layer randomly in each training loop)
+
+
+For the 3., This part
+3.1 six main parameter you can play with:
+     ->1.final_error : It will stop training when training function reach this value. If set to 0.01, It will have a mean error of 1%, dont enter a very low number like 0.000000001 , it cant reach, the good value should between 0.005~0.008
+     ->2.lr          : learning rate, not many to say
+     ->3.iter_no     : the number of iter before enter the while loop(the loop to let the training reach the final error value)
+     ->4.mini_batch  : Small simple training, trust turn off it if you using CPU training unless you have 8-cores cpu(and you should add the num_worker=8 inside the function that in the dataloader part)
+     ->5.GPU         : Use GPU training or not, normally it is False, turn True if you have a cuda gpu(should be >GTX6XX display card)
+     ->6.weight_decay: The most important constant!!!!!!!!!!!!!!!!!!!!!. If your new extand data not perform good , it is bescuase of the overfit issue, this is the l2 norm to reduce the overfit issue, but it will cuase the training function cant reach the lower final error value at the 1., using the weight_decay=0.1 is the best value now I can find which can reach the 0.006~0.007.
+
+For the 4., This part 
+4.1 just save the data after training.
+
+
+================================================== IV =====================================================
+This is showing how the neurol work best fit the function
+It is like the normal training function,If you want to use it ,just put the grams file under the folder and run it is ok.
+HOw TO RUN IT:
+''
+$: nohup ipython visual_plot.py > /dev/null 2>&1 &
+''
+During the running , it will give out the png with order of :2.png 4.png 6.png ........
+
+================================================== V =====================================================
+Caveats:
+1) Interpolation seems to overfit after tau_11.3 = 2.7 or so. If we add more models at higher optical depths, we can get a more accurate value for the
+interpolated flux. Even one more model between consecutive models should do it.
